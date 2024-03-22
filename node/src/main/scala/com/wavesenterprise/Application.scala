@@ -399,7 +399,8 @@ class Application(val ownerPasswordMode: OwnerPasswordMode,
 
     val privacyEnabled = settings.privacy.storage.vendor != PrivacyStorageVendor.Unknown
 
-    val feeCalculator = FeeCalculator(blockchainUpdater, settings.blockchain.custom.functionality, settings.blockchain.fees)
+    val feeCalculator =
+      FeeCalculator(blockchainUpdater, settings.blockchain.custom.functionality, settings.blockchain.fees, settings.blockchain.`type`)
 
     val privacyApiService =
       new PrivacyApiService(

@@ -7,7 +7,15 @@ import com.wavesenterprise.block.{Block, TxMicroBlock}
 import com.wavesenterprise.consensus.PoSLikeConsensusBlockData
 import com.wavesenterprise.features.BlockchainFeature
 import com.wavesenterprise.lagonaki.mocks.TestBlock
-import com.wavesenterprise.settings.{BlockchainSettings, ConsensusSettings, Custom, FeeSettings, TestFunctionalitySettings, WESettings}
+import com.wavesenterprise.settings.{
+  BlockchainSettings,
+  BlockchainType,
+  ConsensusSettings,
+  Custom,
+  FeeSettings,
+  TestFunctionalitySettings,
+  WESettings
+}
 import com.wavesenterprise.state._
 import com.wavesenterprise.utils.EitherUtils.EitherExt
 import com.wavesenterprise.transaction.{GenesisPermitTransaction, Transaction}
@@ -33,7 +41,8 @@ package object history {
   val DefaultBlockchainSettings = BlockchainSettings(
     Custom(TestFunctionalitySettings.Enabled, settings.blockchain.custom.genesis, settings.blockchain.custom.addressSchemeCharacter),
     ConfigSource.fromConfig(config.getConfig("node.blockchain.fees")).loadOrThrow[FeeSettings],
-    ConsensusSettings.PoSSettings
+    ConsensusSettings.PoSSettings,
+    BlockchainType.CUSTOM.entryName
   )
 
   val MicroblocksActivatedAt0BlockchainSettings: BlockchainSettings =

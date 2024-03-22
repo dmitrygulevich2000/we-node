@@ -516,7 +516,7 @@ object Custom extends WEConfigReaders {
   implicit val configReader: ConfigReader[Custom] = deriveReader
 }
 
-case class BlockchainSettings(custom: Custom, fees: Fees, consensus: ConsensusSettings) {
+case class BlockchainSettings(custom: Custom, fees: Fees, consensus: ConsensusSettings, `type`: String) {
   require(
     consensus.consensusType != ConsensusType.PoS || custom.genesis.`type` != GenesisType.SnapshotBased,
     s"Genesis type '${GenesisType.SnapshotBased.entryName}' is not supported for consensus type '${ConsensusType.PoS.value}'"
@@ -564,6 +564,8 @@ object BlockchainSettings extends WEConfigReaders {
        |  ${show"${custom.genesis}".replace("\n", "\n--")}
        |feeSettings:
        |  ${show"$fees".replace("\n", "\n--")}
+       |type:
+       |  ${show"${`type`}".replace("\n", "\n--")}
      """.stripMargin
   }
 

@@ -18,7 +18,7 @@ import com.wavesenterprise.privacy.EmptyPolicyStorage
 import com.wavesenterprise.protobuf.service.transaction.UtxSize
 import com.wavesenterprise.settings.SynchronizationSettings.TxBroadcasterSettings
 import com.wavesenterprise.settings.TestFeeUtils.TestFeeExt
-import com.wavesenterprise.settings.{NodeMode, TestFees, TestFunctionalitySettings}
+import com.wavesenterprise.settings.{BlockchainType, NodeMode, TestFees, TestFunctionalitySettings}
 import com.wavesenterprise.state.AssetHolder._
 import com.wavesenterprise.state.{AssetDescription, Blockchain, ByteStr}
 import com.wavesenterprise.transaction.docker.ContractTransactionGen
@@ -61,7 +61,8 @@ class TransactionsRouteSpec
   private val consensus             = mock[Consensus]
   private val utx                   = mock[UtxPool]
   private val activePeerConnections = mock[ActivePeerConnections]
-  private val feeCalculator         = FeeCalculator(blockchain, TestFunctionalitySettings.Stub, TestFees.defaultFees.toFeeSettings)
+  private val feeCalculator =
+    FeeCalculator(blockchain, TestFunctionalitySettings.Stub, TestFees.defaultFees.toFeeSettings, BlockchainType.CUSTOM.entryName)
   private val txBroadcasterSettings = TxBroadcasterSettings(10000, 20.seconds, 1, 3, 500, 1.second, 20.seconds, 1.second)
   private val txBroadcaster =
     new EnabledTxBroadcaster(txBroadcasterSettings, blockchain, consensus, utx, activePeerConnections, 30)(
@@ -104,7 +105,7 @@ class TransactionsRouteSpec
         (blockchain.height _).expects().returning(1).anyNumberOfTimes()
         (blockchain.activatedFeatures _).expects().returning(featuresSettings.preActivatedFeatures).anyNumberOfTimes()
 
-        val feeCalculator = FeeCalculator(blockchain, featuresSettings, TestFees.defaultFees.toFeeSettings)
+        val feeCalculator = FeeCalculator(blockchain, featuresSettings, TestFees.defaultFees.toFeeSettings, BlockchainType.CUSTOM.entryName)
         val route = new TransactionsApiRoute(
           restAPISettings,
           feeCalculator,
@@ -151,7 +152,7 @@ class TransactionsRouteSpec
         val blockchain = mock[Blockchain]
         (blockchain.height _).expects().returning(1).anyNumberOfTimes()
         (blockchain.activatedFeatures _).expects().returning(featuresSettings.preActivatedFeatures).anyNumberOfTimes()
-        val feeCalculator = FeeCalculator(blockchain, featuresSettings, TestFees.defaultFees.toFeeSettings)
+        val feeCalculator = FeeCalculator(blockchain, featuresSettings, TestFees.defaultFees.toFeeSettings, BlockchainType.CUSTOM.entryName)
 
         val route = new TransactionsApiRoute(
           restAPISettings,
@@ -193,7 +194,7 @@ class TransactionsRouteSpec
         val blockchain = mock[Blockchain]
         (blockchain.height _).expects().returning(1).anyNumberOfTimes()
         (blockchain.activatedFeatures _).expects().returning(featuresSettings.preActivatedFeatures).anyNumberOfTimes()
-        val feeCalculator = FeeCalculator(blockchain, featuresSettings, TestFees.defaultFees.toFeeSettings)
+        val feeCalculator = FeeCalculator(blockchain, featuresSettings, TestFees.defaultFees.toFeeSettings, BlockchainType.CUSTOM.entryName)
 
         val route = new TransactionsApiRoute(
           restAPISettings,
@@ -253,7 +254,7 @@ class TransactionsRouteSpec
             sponsorshipIsEnabled = true
           )))
           .anyNumberOfTimes()
-        val feeCalculator = FeeCalculator(blockchain, featuresSettings, TestFees.defaultFees.toFeeSettings)
+        val feeCalculator = FeeCalculator(blockchain, featuresSettings, TestFees.defaultFees.toFeeSettings, BlockchainType.CUSTOM.entryName)
 
         val route = new TransactionsApiRoute(
           restAPISettings,
@@ -314,7 +315,7 @@ class TransactionsRouteSpec
             sponsorshipIsEnabled = true
           )))
           .anyNumberOfTimes()
-        val feeCalculator = FeeCalculator(blockchain, featuresSettings, TestFees.defaultFees.toFeeSettings)
+        val feeCalculator = FeeCalculator(blockchain, featuresSettings, TestFees.defaultFees.toFeeSettings, BlockchainType.CUSTOM.entryName)
 
         val route = new TransactionsApiRoute(
           restAPISettings,

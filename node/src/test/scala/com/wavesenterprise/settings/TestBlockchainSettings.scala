@@ -8,7 +8,8 @@ object TestBlockchainSettings {
   val Default: BlockchainSettings = BlockchainSettings(
     Custom(TestFunctionalitySettings.Enabled, settings.blockchain.custom.genesis, settings.blockchain.custom.addressSchemeCharacter),
     FeeSettings.FeesDisabled,
-    ConsensusSettings.PoSSettings
+    ConsensusSettings.PoSSettings,
+    BlockchainType.CUSTOM.entryName
   )
 
   def withFunctionality(fs: FunctionalitySettings): BlockchainSettings =
