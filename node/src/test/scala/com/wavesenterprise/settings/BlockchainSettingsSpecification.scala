@@ -123,7 +123,7 @@ class BlockchainSettingsSpecification extends AnyFlatSpec with Matchers with Wit
 
   "BlockchainSettings" should "read mainnet values" in withAddressSchema('V') {
     val configSource = mainnetConfig.at("node.blockchain")
-    val settings = configSource.loadOrThrow[BlockchainSettings]
+    val settings     = configSource.loadOrThrow[BlockchainSettings]
 
     settings.`type` should be(BlockchainType.MAINNET.entryName)
   }
