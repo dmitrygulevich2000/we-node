@@ -57,6 +57,17 @@ class BlockchainSettingsSpecification extends AnyFlatSpec with Matchers with Wit
     }
   }
 
+  private lazy val mainnetConfig = buildSourceBasedOnDefault {
+    ConfigSource.string {
+      s"""
+         | node.blockchain {
+         |    type = "MAINNET"
+         |    fees.enabled = false
+         |  }
+         |""".stripMargin
+    }
+  }
+
   "BlockchainSettings" should "read custom values" in withAddressSchema('C') {
     val configSource = defaultConfig.at("node.blockchain")
     val settings     = configSource.loadOrThrow[BlockchainSettings]
@@ -108,5 +119,12 @@ class BlockchainSettingsSpecification extends AnyFlatSpec with Matchers with Wit
     val readSettings = inputConfig.loadOrThrow[FunctionalitySettings]
 
     readSettings.preActivatedFeatures shouldBe Map.empty
+  }
+
+  "BlockchainSettings" should "read mainnet values" in withAddressSchema('V') {
+    val configSource = mainnetConfig.at("node.blockchain")
+    val settings = configSource.loadOrThrow[BlockchainSettings]
+
+    settings.`type` should be(BlockchainType.MAINNET.entryName)
   }
 }
