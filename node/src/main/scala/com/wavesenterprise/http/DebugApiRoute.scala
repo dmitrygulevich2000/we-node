@@ -147,7 +147,9 @@ class DebugApiRoute(ws: WESettings,
     * Get state at specified height
     **/
   def stateWE: Route = (path("stateWE" / IntNumber) & get) { height =>
-    complete(ng.addressWestDistribution(height).map { case (a, b) => a.stringRepr -> b })
+    PositiveInt(height.toString).processRoute { height =>
+      complete(ng.addressWestDistribution(height).map { case (a, b) => a.stringRepr -> b })
+    }
   }
 
   private def rollbackToBlock(blockId: ByteStr, returnTransactionsToUtx: Boolean): Future[ToResponseMarshallable] = {
