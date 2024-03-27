@@ -83,7 +83,8 @@ class UtxPoolSpecification
           'T'
         ),
         origSettings.blockchain.fees,
-        ConsensusSettings.PoSSettings
+        ConsensusSettings.PoSSettings,
+        BlockchainType.CUSTOM.entryName
       ),
       features = origSettings.features.copy(autoShutdownOnUnsupportedFeature = false)
     )

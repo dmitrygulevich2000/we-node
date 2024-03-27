@@ -3,7 +3,7 @@ package com.wavesenterprise.transaction.validation
 import cats.implicits._
 import com.wavesenterprise.features.BlockchainFeature
 import com.wavesenterprise.features.FeatureProvider.FeatureProviderExt
-import com.wavesenterprise.settings.{FeeSettings, Fees, FunctionalitySettings}
+import com.wavesenterprise.settings.{BlockchainType, FeeSettings, Fees, FunctionalitySettings}
 import com.wavesenterprise.state.{AssetDescription, Blockchain, Sponsorship}
 import com.wavesenterprise.transaction.ValidationError.GenericError
 import com.wavesenterprise.transaction._
@@ -30,22 +30,24 @@ case object DisabledFeeCalculator extends FeeCalculator {
 /**
   * Is used when node.blockchain.fees list is defined in Configuration
   */
-case class EnabledFeeCalculator(blockchain: Blockchain, fs: FunctionalitySettings, feeSettings: Fees) extends FeeCalculator {
+case class EnabledFeeCalculator(blockchain: Blockchain, fs: FunctionalitySettings, feeSettings: Fees, blockchainType: String) extends FeeCalculator {
   import FeeCalculator._
 
-  def isFeeSwitchActivated(height: Int): Boolean =
+  private def isFeeSwitchActivated(height: Int): Boolean =
     blockchain
       .featureActivationHeight(BlockchainFeature.FeeSwitch.id)
-      // [legacy] that's a thing to remember. Hopefully, will fix, but have to migrate pre-activated features state somehow then
       .exists(activationHeight => height >= activationHeight + fs.featureCheckBlocksPeriod)
 
-  def areSponsoredFeesActivated(height: Int): Boolean =
+  private def areSponsoredFeesActivated(height: Int): Boolean =
     blockchain.isFeatureActivated(BlockchainFeature.SponsoredFeesSupport, height)
 
   def calculateMinFee(height: Int, tx: Transaction): Either[ValidationError, FeeHolder] = {
     if (zeroFeeTransactionTypes.contains(tx.builder.typeId)) {
       Right(FeeInNatives(0L))
-    } else if (areSponsoredFeesActivated(height)) {
+    } else if (blockchainType == BlockchainType.MAINNET.entryName & !areSponsoredFeesActivated(height)) {
+      val minFee = baseFeeInWest(height, tx)
+      FeeInNatives(minFee).asRight
+    } else {
       val minFeeInWest = baseFeeInWest(height, tx)
       tx.feeAssetId match {
         case None =>
@@ -63,16 +65,15 @@ case class EnabledFeeCalculator(blockchain: Blockchain, fs: FunctionalitySetting
             )
           } yield FeeInAsset(assetId, assetInfo, westFee)
       }
-    } else {
-      val minFee = baseFeeInWest(height, tx)
-      FeeInNatives(minFee).asRight
     }
   }
 
   def validateTxFee(height: Int, tx: Transaction): Either[ValidationError, Unit] = {
     if (zeroFeeTransactionTypes.contains(tx.builder.typeId)) {
       Right(())
-    } else if (isFeeSwitchActivated(height)) {
+    } else if (blockchainType == BlockchainType.MAINNET.entryName & !isFeeSwitchActivated(height)) {
+      preFeeSwitchValidation(height, tx)
+    } else {
       calculateMinFee(height, tx).flatMap {
         case FeeInNatives(minWestAmount) =>
           Either.cond(tx.fee >= minWestAmount, (), feeError("WEST", tx.builder.classTag.toString(), minWestAmount, tx.fee))
@@ -84,8 +85,6 @@ case class EnabledFeeCalculator(blockchain: Blockchain, fs: FunctionalitySetting
                       GenericError(s"Asset '$assetId' is not sponsored and thus cannot be used as a fee")) >>
             Either.cond(tx.fee >= minAssetAmount, (), feeError(assetId.toString, tx.builder.classTag.toString(), minAssetAmount, tx.fee))
       }
-    } else {
-      preFeeSwitchValidation(height, tx)
     }
   }
 
@@ -139,11 +138,11 @@ object FeeCalculator {
     def commitAdditions(addition: Long): FeeInNatives = self.copy(westAmount = self.westAmount + addition)
   }
 
-  def apply(blockchain: Blockchain, fs: FunctionalitySettings, feeSettings: Fees): FeeCalculator = feeSettings match {
+  def apply(blockchain: Blockchain, fs: FunctionalitySettings, feeSettings: Fees, blockchainType: String): FeeCalculator = feeSettings match {
     case FeeSettings.FeesDisabled =>
       DisabledFeeCalculator
     case _ =>
-      EnabledFeeCalculator(blockchain, fs, feeSettings)
+      EnabledFeeCalculator(blockchain, fs, feeSettings, blockchainType)
   }
 
   /**

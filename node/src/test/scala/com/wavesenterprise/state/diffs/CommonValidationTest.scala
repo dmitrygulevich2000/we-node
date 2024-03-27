@@ -12,6 +12,7 @@ import com.wavesenterprise.lang.v1.compiler.Terms._
 import com.wavesenterprise.mining.MiningConstraint
 import com.wavesenterprise.settings.CorporateTestFees.txFee
 import com.wavesenterprise.settings.{
+  BlockchainType,
   ConsensusType,
   FunctionalitySettings,
   GenesisSettingsVersion,
@@ -131,7 +132,7 @@ class CommonValidationTest extends AnyPropSpec with ScalaCheckPropertyChecks wit
           blockchain.append(preconditionDiff, preconditionFees, genesisBlock)
 
           f {
-            FeeCalculator(blockchain, blockchainSettings.custom.functionality, blockchainSettings.fees)
+            FeeCalculator(blockchain, blockchainSettings.custom.functionality, blockchainSettings.fees, BlockchainType.CUSTOM.entryName)
               .validateTxFee(height = 2, transferTx)
           }
         }
@@ -169,7 +170,7 @@ class CommonValidationTest extends AnyPropSpec with ScalaCheckPropertyChecks wit
           blockchain.append(preconditionDiff, preconditionFees, genesisBlock)
 
           f {
-            FeeCalculator(blockchain, blockchainSettings.custom.functionality, blockchainSettings.fees)
+            FeeCalculator(blockchain, blockchainSettings.custom.functionality, blockchainSettings.fees, BlockchainType.CUSTOM.entryName)
               .validateTxFee(height = 2, transferTx)
           }
         }
@@ -299,7 +300,7 @@ class CommonValidationTest extends AnyPropSpec with ScalaCheckPropertyChecks wit
           blockchain.append(preconditionDiff, preconditionFees, genesisBlock)
 
           f {
-            FeeCalculator(blockchain, blockchainSettings.custom.functionality, blockchainSettings.fees)
+            FeeCalculator(blockchain, blockchainSettings.custom.functionality, blockchainSettings.fees, BlockchainType.CUSTOM.entryName)
               .validateTxFee(height = 1, transferTx)
           }
         }

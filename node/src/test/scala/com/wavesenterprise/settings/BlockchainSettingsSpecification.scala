@@ -1,17 +1,16 @@
 package com.wavesenterprise.settings
 
 import com.wavesenterprise.account.Address
-import com.wavesenterprise.crypto
+import com.wavesenterprise.{CryptoInitializerSpec, crypto}
 import com.wavesenterprise.db.WithAddressSchema
 import com.wavesenterprise.state.ByteStr
 import pureconfig.ConfigSource
 import pureconfig.error.ConfigReaderException
-
 import scala.concurrent.duration._
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
 
-class BlockchainSettingsSpecification extends AnyFlatSpec with Matchers with WithAddressSchema {
+class BlockchainSettingsSpecification extends AnyFlatSpec with Matchers with WithAddressSchema with CryptoInitializerSpec {
 
   private lazy val pk1         = crypto.generatePublicKey
   private lazy val pk2         = crypto.generatePublicKey
@@ -23,7 +22,7 @@ class BlockchainSettingsSpecification extends AnyFlatSpec with Matchers with Wit
     ConfigSource.string {
       s"""
          | node.blockchain {
-         |    type = CUSTOM
+         |    type = "CUSTOM"
          |    consensus.type = pos
          |    custom {
          |      address-scheme-character = "C"
@@ -58,10 +57,22 @@ class BlockchainSettingsSpecification extends AnyFlatSpec with Matchers with Wit
     }
   }
 
+  private lazy val mainnetConfig = buildSourceBasedOnDefault {
+    ConfigSource.string {
+      s"""
+         | node.blockchain {
+         |    type = "MAINNET"
+         |    fees.enabled = false
+         |  }
+         |""".stripMargin
+    }
+  }
+
   "BlockchainSettings" should "read custom values" in withAddressSchema('C') {
     val configSource = defaultConfig.at("node.blockchain")
     val settings     = configSource.loadOrThrow[BlockchainSettings]
 
+    settings.`type` should be(BlockchainType.CUSTOM.entryName)
     settings.custom.addressSchemeCharacter should be('C')
     settings.consensus should be(ConsensusSettings.PoSSettings)
 
@@ -108,5 +119,12 @@ class BlockchainSettingsSpecification extends AnyFlatSpec with Matchers with Wit
     val readSettings = inputConfig.loadOrThrow[FunctionalitySettings]
 
     readSettings.preActivatedFeatures shouldBe Map.empty
+  }
+
+  "BlockchainSettings" should "read mainnet values" in withAddressSchema('V') {
+    val configSource = mainnetConfig.at("node.blockchain")
+    val settings     = configSource.loadOrThrow[BlockchainSettings]
+
+    settings.`type` should be(BlockchainType.MAINNET.entryName)
   }
 }

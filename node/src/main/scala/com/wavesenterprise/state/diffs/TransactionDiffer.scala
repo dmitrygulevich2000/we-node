@@ -71,7 +71,7 @@ class TransactionDiffer(
               _ <- CommonValidation.disallowDuplicateIds(blockchain, tx)
               _ <- CommonValidation.disallowSendingGreaterThanBalance(blockchain, tx)
               _ <- permissionValidator.validatePermissionForTx(blockchain, tx)
-              _ <- FeeCalculator(blockchain, settings.custom.functionality, settings.fees).validateTxFee(currentBlockHeight, tx)
+              _ <- FeeCalculator(blockchain, settings.custom.functionality, settings.fees, settings.`type`).validateTxFee(currentBlockHeight, tx)
             } yield ()
           }
       } yield ()
