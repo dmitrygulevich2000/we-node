@@ -66,6 +66,20 @@ class PermissionRouteSpec
         (json \ "roles").as[Seq[RoleInfo]].map(_.role) should contain allElementsOf activePermissions.toSeq.map(_.prefixS)
         (json \ "timestamp").as[Long] shouldEqual timestamp
       }
+
+      Get(routePath(s"/${address.stringRepr}/at/${Long.MinValue}")) ~> route ~> check {
+        status shouldEqual StatusCodes.BadRequest
+        val error = responseAs[String]
+        error should include("Invalid parameter")
+      }
+
+      val str = "test"
+      Get(routePath(s"/${address.stringRepr}/at/$str")) ~> route ~> check {
+        status shouldEqual StatusCodes.BadRequest
+        val error = responseAs[String]
+        error should include("Unable to parse Long from")
+      }
+
     }
   }
 
