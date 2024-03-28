@@ -5,8 +5,6 @@ import com.wavesenterprise.settings.WEConfigReaders
 import pureconfig.ConfigReader
 import pureconfig.generic.semiauto.deriveReader
 
-import scala.concurrent.duration.FiniteDuration
-
 case class WASMSettings(
     fuelLimit: Long
 )

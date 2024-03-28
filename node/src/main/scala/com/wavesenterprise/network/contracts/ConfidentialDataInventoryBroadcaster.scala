@@ -2,6 +2,7 @@ package com.wavesenterprise.network.contracts
 
 import com.wavesenterprise.account.{Address, PrivateKeyAccount}
 import com.wavesenterprise.crypto.internals.confidentialcontracts.Commitment
+import com.wavesenterprise.docker.ContractInfo
 import com.wavesenterprise.features.BlockchainFeature
 import com.wavesenterprise.network.ConfidentialInventory
 import com.wavesenterprise.network.contracts.ConfidentialDataInventoryBroadcaster.ConfidentialDataFeatureUnactivatedError
@@ -36,13 +37,14 @@ trait ConfidentialDataInventoryBroadcaster extends ScorexLogging {
   def broadcastInventory(
       inventory: ConfidentialInventory,
       flushChannels: Boolean = true,
-      excludeChannels: Set[Channel] = Set.empty
+      excludeChannels: Set[Channel] = Set.empty,
+      contractInfo: Option[ContractInfo] = None
   ): Unit = {
-    blockchain.contract(inventory.contractId) match {
+    blockchain.contract(inventory.contractId).orElse(contractInfo.find(_.contractId == inventory.contractId.byteStr)) match {
       case Some(contract) =>
         val confidentialDataRecipients = contract.groupParticipants
         broadcastInventoryToRecipients(confidentialDataRecipients, inventory, flushChannels, excludeChannels)
-      case None => log.error(s"$inventory wasn't broadcast, because contract '${inventory.contractId}' not found in DB")
+      case None => log.error(s"$inventory wasn't broadcast, because contract '${inventory.contractId}' not found")
     }
   }
 

@@ -54,6 +54,7 @@ class ConfidentialContractServiceImpl(
           feeAssetId = in.feeAssetId,
           commitment = in.commitment,
           commitmentKey = in.commitmentKey,
+          participantsForAtomic = in.participantsForAtomic.toList,
           certificatesBytes = in.certificates.map(_.toByteArray).toList
         )
 
@@ -73,7 +74,8 @@ class ConfidentialContractServiceImpl(
 
         pbResponse = ConfidentialCallResponse(
           transaction = response.callContractTransactionV6.toInnerProto.some,
-          confidentialInput = pbConfidentialInput.some
+          confidentialInput = pbConfidentialInput.some,
+          additionalMessage = response.additionalMessage
         )
       } yield pbResponse).value.flatMap {
         case Right(value) => Task(value)

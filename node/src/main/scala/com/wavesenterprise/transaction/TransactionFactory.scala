@@ -804,6 +804,7 @@ object TransactionFactory extends ScorexLogging {
           case CallContractTransactionV3    => jsv.as[SignedCallContractRequestV3].toTx
           case CallContractTransactionV4    => jsv.as[SignedCallContractRequestV4].toTx
           case CallContractTransactionV5    => jsv.as[SignedCallContractRequestV5].toTx
+          case CallContractTransactionV6    => jsv.as[SignedCallContractRequestV6].toTx
           case CallContractTransactionV7    => jsv.as[SignedCallContractRequestV7].toTx
           case DisableContractTransactionV1 => jsv.as[SignedDisableContractRequestV1].toTx
           case DisableContractTransactionV2 => jsv.as[SignedDisableContractRequestV2].toTx
@@ -1319,6 +1320,28 @@ object TransactionFactory extends ScorexLogging {
         feeAssetId,
         request.atomicBadge,
         request.payments
+      )
+    } yield tx
+  }
+
+  def callContractTransactionV6(request: SignedCallContractRequestV6,
+                                wallet: Wallet,
+                                time: Time): Either[ValidationError, CallContractTransactionV6] = {
+    for {
+      pk         <- findPrivateKey(wallet, request)
+      contractId <- ByteStr.decodeBase58(request.contractId).fold(_ => Left(InvalidContractId(request.contractId)), Right(_))
+
+      tx <- CallContractTransactionV6.selfSigned(
+        sender = pk,
+        contractId,
+        List.empty,
+        request.fee,
+        request.timestamp.getOrElse(time.getTimestamp()),
+        request.contractVersion,
+        feeAssetId = None,
+        request.atomicBadge,
+        List.empty,
+        inputCommitment = request.inputCommitment
       )
     } yield tx
   }

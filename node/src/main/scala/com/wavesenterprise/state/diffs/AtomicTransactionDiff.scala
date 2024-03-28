@@ -44,7 +44,7 @@ case class AtomicTransactionDiff(blockchain: Blockchain,
           accDiff <- acc
           updatedBlockchain = composite(blockchain, accDiff)
           // todo: add certs
-          diff <- differ(updatedBlockchain, tx, None, atomically = true)
+          diff <- differ(updatedBlockchain, tx, maybeCertChainWithCrl = None, atomically = true)
         } yield {
           accDiff.combine(diff)
         }

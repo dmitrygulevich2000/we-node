@@ -12,16 +12,22 @@ import com.wavesenterprise.network.peers.ActivePeerConnections
 import com.wavesenterprise.certs.CertChain
 import com.wavesenterprise.crypto.internals.confidentialcontracts.Commitment
 import com.wavesenterprise.database.rocksdb.confidential.ConfidentialRocksDBStorage
+import com.wavesenterprise.docker.ContractExecutionStatus.Failure
 import com.wavesenterprise.docker.ValidatorTransactionsExecutor.ContractExecutionResultsId
 import com.wavesenterprise.docker.grpc.service.ContractReadLogService
 import com.wavesenterprise.docker.validator.ValidationPolicy
 import com.wavesenterprise.features.BlockchainFeature
 import com.wavesenterprise.features.FeatureProvider.FeatureProviderExt
+import com.wavesenterprise.metrics.docker.ContractExecutionMetrics
+import com.wavesenterprise.mining.{TransactionWithDiff, TransactionsAccumulator}
+import com.wavesenterprise.network.peers.ActivePeerConnections
+import com.wavesenterprise.network.{ContractValidatorResultsV1, ContractValidatorResultsV2}
 import com.wavesenterprise.state.{Blockchain, ByteStr, ContractId, DataEntry, NG}
 import com.wavesenterprise.transaction.ValidationError
 import com.wavesenterprise.transaction.ValidationError.{ConstraintsOverflowError, MvccConflictError}
 import com.wavesenterprise.transaction.docker.ContractTransactionEntryOps.DataEntryMap
 import com.wavesenterprise.transaction.docker.assets.ContractAssetOperation
+import com.wavesenterprise.transaction.docker._
 import com.wavesenterprise.transaction.docker.assets.ContractAssetOperation.ContractAssetOperationMap
 import com.wavesenterprise.transaction.docker.{
   CallContractTransactionV6,
@@ -103,12 +109,16 @@ class ValidatorTransactionsExecutor(
     }
   }
 
-  override protected def handleExecutionSuccess(results: List[DataEntry[_]],
-                                                assetOperations: List[ContractAssetOperation],
-                                                metrics: ContractExecutionMetrics,
-                                                tx: ExecutableTransaction,
-                                                maybeCertChainWithCrl: Option[(CertChain, CrlCollection)],
-                                                atomically: Boolean): Either[ValidationError, TransactionWithDiff] = {
+  override protected def handleExecutionSuccess(
+      results: List[DataEntry[_]],
+      assetOperations: List[ContractAssetOperation],
+      metrics: ContractExecutionMetrics,
+      tx: ExecutableTransaction,
+      maybeCertChainWithCrl: Option[(CertChain, CrlCollection)],
+      atomically: Boolean,
+      contractInfo: ContractInfo
+  ): Either[ValidationError, TransactionWithDiff] = {
+
     (for {
       _ <- checkAssetOperationsSupported(contractNativeTokenFeatureActivated, assetOperations)
       _ <- checkLeaseOpsForContractSupported(leaseOpsForContractsFeatureActivated, assetOperations)
@@ -117,7 +127,7 @@ class ValidatorTransactionsExecutor(
       _ <- validateAssetIdLength(assetOperations)
 
       executedTxOutput <-
-        extractInputCommitment(tx)
+        extractInputCommitment(tx, atomically, contractInfo.some)
           .filter(_ => confidentialContractFeatureActivated)
           .map { inputCommitment =>
             buildConfidentialExecutedTx(results, tx, resultsHash, List.empty, inputCommitment)
@@ -180,7 +190,7 @@ class ValidatorTransactionsExecutor(
       allPolicies = Seq(txPolicy) ++ calledContracts.map(ContractId)
         .flatMap(transactionsAccumulator.contract).map(_.validationPolicy)
       validationPolicy <- deriveValidationPolicy(tx.contractId, allPolicies)
-      executedTxOutput <- extractInputCommitment(tx)
+      executedTxOutput <- extractInputCommitment(tx, atomically = false)
         .map { inputCommitment =>
           buildConfidentialExecutedTx(results, tx, resultsHash, List.empty, inputCommitment)
         }.getOrElse {

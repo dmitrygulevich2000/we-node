@@ -56,7 +56,7 @@ case class SignedUpdateContractRequestV5(senderPublicKey: String,
       )
     } yield tx
 
-  def toJson: JsObject = Json.toJson(this).as[JsObject] + ("type" -> JsNumber(UpdateContractTransaction.typeId.toInt)) + ("version" -> JsNumber(4))
+  def toJson: JsObject = Json.toJson(this).as[JsObject] + ("type" -> JsNumber(UpdateContractTransaction.typeId.toInt)) + ("version" -> JsNumber(5))
 }
 
 object SignedUpdateContractRequestV5 {

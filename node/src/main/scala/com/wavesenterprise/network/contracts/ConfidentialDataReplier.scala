@@ -82,7 +82,7 @@ class ConfidentialDataReplier(
       peerAddress <- addressByChannel(channel)
       _ = log.debug(s"Got a $request from '${id(channel)}' with address '$peerAddress'")
       _ = requestsCounter.increment()
-      _ <- Task.fromEither(validateRequestingPeer(request.contractId, peerAddress))
+      _ <- Task.fromEither(validateRequestingPeer(peerAddress))
       _ <- sendResponse(channel, request)
     } yield {
       log.trace(s"Request '$request' has been processed")
@@ -160,14 +160,9 @@ class ConfidentialDataReplier(
       .getOrElse(throw new RuntimeException(s"Failed to find the node-owner address for channel '${channel.remoteAddress}'"))
   }
 
-  private def validateRequestingPeer(contractId: ContractId, peerAddress: Address): Either[ConfidentialDataReplierError, Unit] = {
+  private def validateRequestingPeer(peerAddress: Address): Either[ConfidentialDataReplierError, Unit] = {
     for {
       _ <- Either.cond(blockchain.participantPubKey(peerAddress).isDefined, (), PeerNotRegistered(peerAddress))
-      _ <- Either.cond(
-        blockchain.contract(contractId).exists(_.groupParticipants.contains(peerAddress)),
-        (),
-        PeerIsNotConfidentialContractParticipant(peerAddress, contractId)
-      )
     } yield ()
   }
 }

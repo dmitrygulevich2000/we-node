@@ -3,10 +3,10 @@ package com.wavesenterprise.mining
 import cats.data.{EitherT, OptionT}
 import cats.implicits._
 import com.wavesenterprise.account.{Address, PrivateKeyAccount}
-import com.wavesenterprise.docker.validator.{ContractValidatorResultsStore, ValidationPolicy}
-import com.wavesenterprise.docker.{ContractInfo, MinerTransactionsExecutor, TransactionsExecutor, TxContext, ValidatorTransactionsExecutor}
 import com.wavesenterprise.certs.CertChain
 import com.wavesenterprise.database.rocksdb.confidential.ConfidentialRocksDBStorage
+import com.wavesenterprise.docker.validator.{ContractValidatorResultsStore, ValidationPolicy}
+import com.wavesenterprise.docker._
 import com.wavesenterprise.settings.PositiveInt
 import com.wavesenterprise.state.contracts.confidential.ConfidentialStateUpdater
 import com.wavesenterprise.state.{Blockchain, ByteStr, ContractId, Diff}
@@ -19,16 +19,10 @@ import com.wavesenterprise.transaction.ValidationError.{
   MvccConflictError,
   OneConstraintOverflowError
 }
-import com.wavesenterprise.transaction.{ValidationError, _}
-import com.wavesenterprise.transaction.docker.{
-  CallContractTransactionV6,
-  ConfidentialDataInCallContractSupported,
-  CreateContractTransaction,
-  ExecutableTransaction,
-  ExecutedContractTransaction
-}
-import com.wavesenterprise.utils.{ScorexLogging, Time}
+import com.wavesenterprise.transaction.docker._
+import com.wavesenterprise.transaction._
 import com.wavesenterprise.utils.pki.CrlCollection
+import com.wavesenterprise.utils.{ScorexLogging, Time}
 import com.wavesenterprise.utx.UtxPool
 import com.wavesenterprise.utx.UtxPool.TxWithCerts
 import kamon.Kamon
@@ -193,10 +187,34 @@ trait TransactionsConfirmatory[E <: TransactionsExecutor] extends ScorexLogging 
   private def prepareAtomicComplexSetup(atomic: AtomicTransaction,
                                         executor: TransactionsExecutor,
                                         maybeCertChainWithCrl: Option[(CertChain, CrlCollection)]): Task[AtomicComplexSetup] = {
-    val innerSetupTasks = atomic.transactions.map {
-      case executableTx: ExecutableTransaction => executor.prepareSetup(executableTx, maybeCertChainWithCrl)
-      case tx                                  => Task.pure(SimpleTxSetup(tx, maybeCertChainWithCrl))
-    }
+    val (_, innerSetupTasks) =
+      atomic.transactions.foldLeft[(Set[ContractInfo], List[Task[TransactionConfirmationSetup]])](Set.empty[ContractInfo] -> List.empty) {
+        case ((contracts, txs), callTx: CallContractTransactionV6) =>
+          transactionsAccumulator.contract(ContractId(callTx.contractId)).orElse(contracts.find(_.contractId == callTx.contractId))
+            .filter(_.isConfidential)
+            .map {
+              contractInfo =>
+                if (contractInfo.groupParticipants.contains(ownerKey.toAddress)) {
+                  executor.prepareConfidentialAtomicSetup(callTx, contractInfo, maybeCertChainWithCrl)
+                } else {
+                  Task.pure {
+                    ConfidentialExecutableUnpermittedSetup(callTx, contractInfo, maybeCertChainWithCrl)
+                  }
+                }
+            } match {
+            case Some(tx) => (contracts, txs :+ tx)
+            case None     => (contracts, txs :+ Task.pure(SimpleTxSetup(callTx, maybeCertChainWithCrl)))
+          }
+        case ((contracts, txs), executableTx: ExecutableTransaction) =>
+          executor.contractInfo(executableTx) match {
+            case Right(contract) if contract.isConfidential =>
+              (contracts + contract, txs :+ executor.prepareSetup(executableTx, maybeCertChainWithCrl))
+            case _ =>
+              (contracts, txs :+ executor.prepareSetup(executableTx, maybeCertChainWithCrl))
+          }
+        case ((contracts, txs), tx) =>
+          (contracts, txs :+ Task.pure(SimpleTxSetup(tx, maybeCertChainWithCrl)))
+      }
     Task.pure(AtomicComplexSetup(atomic, innerSetupTasks, maybeCertChainWithCrl))
   }
 
@@ -341,6 +359,8 @@ trait TransactionsConfirmatory[E <: TransactionsExecutor] extends ScorexLogging 
       innerTxsWithDiff <- atomicSetup.innerSetupTasks
         .traverse { setupTask =>
           EitherT.right[ValidationError](setupTask).flatMap {
+            case setup: ConfidentialCallPermittedSetup =>
+              EitherT(executor.processSetup(setup, atomically = true, txContext = TxContext.AtomicInner))
             case executableSetup: DefaultExecutableTxSetup =>
               EitherT(executor.processSetup(executableSetup, atomically = true, txContext = TxContext.AtomicInner))
             case SimpleTxSetup(tx, maybeCertChain) =>

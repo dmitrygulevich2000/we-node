@@ -338,13 +338,13 @@ class ConfidentialDataSynchronizer(
                             attemptsCount: Int = 1,
                             withInventoryRequest: Boolean = false): Task[Unit] =
     Task.defer {
-      blockchain.contract(dataId.contractId) match {
+      blockchain.contract(dataId.contractId).orElse(dataId.contractInfo) match {
         case Some(contract) =>
           val recipients    = contract.groupParticipants
           val selectedPeers = selectPeers(recipients, dataId.contractId)
           if (selectedPeers.nonEmpty) {
             val maybeInventoryRequest =
-              if (withInventoryRequest || !confidentialDataInventoryHandler.containsInventoryDataOwners(dataId)) {
+              if (withInventoryRequest || !confidentialDataInventoryHandler.containsInventoryDataOwners(dataId.copy(contractInfo = None))) {
                 sendToPeers(ConfidentialInventoryRequest(dataId.contractId, dataId.commitment, dataId.dataType), selectedPeers: _*) *>
                   Task(inventoryRequests.increment()) *>
                   Task {
@@ -420,7 +420,7 @@ class ConfidentialDataSynchronizer(
     val coarsestRetryDelay = retryDelay.toSeconds.seconds.toCoarsest
 
     confidentialDataInventoryHandler
-      .inventoryObservable(dataId)
+      .inventoryObservable(dataId.copy(contractInfo = None))
       .flatMap { inventoryOwners =>
         val filteredInventorySenders = inventoryOwners.filterNot(failedAddresses.contains)
         val descriptorsToProcess = if (filteredInventorySenders.nonEmpty) {

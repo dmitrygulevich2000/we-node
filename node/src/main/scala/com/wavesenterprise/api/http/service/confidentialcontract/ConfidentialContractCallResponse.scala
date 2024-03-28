@@ -6,7 +6,8 @@ import play.api.libs.json._
 
 case class ConfidentialContractCallResponse(
     callContractTransactionV6: CallContractTransactionV6,
-    confidentialInput: ConfidentialInput
+    confidentialInput: ConfidentialInput,
+    additionalMessage: String
 )
 
 object ConfidentialContractCallResponse {

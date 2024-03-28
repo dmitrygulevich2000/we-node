@@ -4,19 +4,19 @@ import cats.Monoid
 import cats.implicits._
 import com.wavesenterprise.account.PublicKeyAccount
 import com.wavesenterprise.acl.PermissionValidator
-import com.wavesenterprise.database.docker.KeysRequest
-import com.wavesenterprise.mining.TransactionsAccumulator.KeysReadingInfo._
 import com.wavesenterprise.certs.CertChain
+import com.wavesenterprise.database.docker.KeysRequest
 import com.wavesenterprise.database.rocksdb.confidential.{ConfidentialDiff, PersistentConfidentialState}
 import com.wavesenterprise.mining.TransactionsAccumulator.Currency.{CustomAsset, West}
+import com.wavesenterprise.mining.TransactionsAccumulator.KeysReadingInfo._
 import com.wavesenterprise.settings.{BlockchainSettings, WESettings}
-import com.wavesenterprise.state.ContractBlockchain.ContractReadingContext
-import com.wavesenterprise.state.diffs.TransactionDiffer
 import com.wavesenterprise.state.AssetHolder._
+import com.wavesenterprise.state.ContractBlockchain.ContractReadingContext
 import com.wavesenterprise.state.contracts.confidential.{CompositeConfidentialState, ConfidentialOutput, ConfidentialState}
+import com.wavesenterprise.state.diffs.TransactionDiffer
 import com.wavesenterprise.state.diffs.docker.ExecutedContractTransactionDiff.{ContractTxExecutorType, MiningExecutor, ValidatingExecutor}
 import com.wavesenterprise.state.reader.{CompositeBlockchainWithNG, ReadWriteLockingBlockchain}
-import com.wavesenterprise.state.{Blockchain, ByteStr, DataEntry, Diff, MiningConstraintsHolder, NG, ContractId => StateContractId}
+import com.wavesenterprise.state.{Blockchain, ByteStr, ContractId, DataEntry, Diff, MiningConstraintsHolder, NG}
 import com.wavesenterprise.transaction.ValidationError.{CriticalConstraintOverflowError, GenericError, MvccConflictError, OneConstraintOverflowError}
 import com.wavesenterprise.transaction.docker.{ExecutedContractData, ExecutedContractTransaction, ExecutedContractTransactionV5}
 import com.wavesenterprise.transaction.{AssetId, AtomicTransaction, Transaction, ValidationError}
@@ -24,7 +24,6 @@ import com.wavesenterprise.utils.Time
 import com.wavesenterprise.utils.pki.CrlCollection
 import monix.execution.atomic.AtomicInt
 import scorex.util.ScorexLogging
-import com.wavesenterprise.state.ContractId
 
 import java.util.concurrent.ConcurrentHashMap
 import scala.collection.immutable.{Set, SortedMap}
@@ -164,7 +163,7 @@ class TransactionsAccumulator(ng: NG,
 
                 // 'def' is just an optimisation to compute this only when 'checkDataEntryReadingConflicts == false'
                 def checkContractBalanceReadingConflicts =
-                  snapshotDiff.portfolios.collectContractIds.get(StateContractId(readContractId)).fold(false) { contractPortfolio =>
+                  snapshotDiff.portfolios.collectContractIds.get(ContractId(readContractId)).fold(false) { contractPortfolio =>
                     contractIdToKeysReadingInfo(readContractId).assetBalancesReadingInfo.exists { assetBalanceReadingInfo =>
                       assetBalanceReadingInfo.assets.exists {
                         case West                 => contractPortfolio.balance != 0

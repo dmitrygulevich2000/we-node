@@ -6,7 +6,7 @@ import com.wavesenterprise.database.rocksdb.confidential.ConfidentialRocksDBStor
 import com.wavesenterprise.network.peers.ActivePeerConnections
 import com.wavesenterprise.network.{ChannelObservable, ConfidentialInventory, ConfidentialInventoryRequest, id}
 import com.wavesenterprise.settings.contract.ConfidentialInventoryHandlerSettings
-import com.wavesenterprise.state.{Blockchain, ByteStr, ContractId}
+import com.wavesenterprise.state.{Blockchain, ByteStr}
 import com.wavesenterprise.utils.ScorexLogging
 import io.netty.channel.Channel
 import monix.eval.Task
@@ -152,8 +152,8 @@ class ConfidentialDataInventoryHandler(
           toAdd
             .groupBy { case (channel, inventory) => channel -> inventory.contractId }
             .foreach {
-              case ((channel, contractId), inventoriesGroup) =>
-                handleChannelInventories(channel, contractId, inventoriesGroup)
+              case ((_, _), inventoriesGroup) =>
+                handleChannelInventories(inventoriesGroup)
             }
           peers.flushWrites()
         }
@@ -162,22 +162,12 @@ class ConfidentialDataInventoryHandler(
       .onErrorRestartUnlimited
       .subscribe()
 
-  private def handleChannelInventories(sender: Channel, contractId: ContractId, inventories: Seq[(Channel, ConfidentialInventory)]): Unit = {
-    val maybeContract = blockchain.contract(contractId)
-
-    maybeContract match {
-      case Some(contract) =>
-        inventories.foreach {
-          case (_, inventory) =>
-            publishInventoryDescriptor(inventory.dataId, inventory.sender.toAddress)
-            log.trace(s"Broadcast $inventory")
-            broadcastInventoryToRecipients(contract.groupParticipants, inventory, flushChannels = false, excludeChannels = Set(sender))
-        }
-        filteredAndProcessedInventories.increment(inventories.length)
-      case None =>
-        Task(log.error(s"Inventories for contract $contractId will not be processed, because the contract not found in DB"))
+  private def handleChannelInventories(inventories: Seq[(Channel, ConfidentialInventory)]): Unit = {
+    inventories.foreach {
+      case (_, inventory) =>
+        publishInventoryDescriptor(inventory.dataId, inventory.sender.toAddress)
     }
-
+    filteredAndProcessedInventories.increment(inventories.length)
   }
 
   private[this] val dummy = new Object()

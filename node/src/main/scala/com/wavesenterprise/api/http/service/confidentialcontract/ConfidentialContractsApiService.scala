@@ -19,7 +19,7 @@ import com.wavesenterprise.network.peers.ActivePeerConnections
 import com.wavesenterprise.network.{ConfidentialInventory, TransactionWithSize, TxBroadcaster}
 import com.wavesenterprise.state.contracts.confidential.ConfidentialInput
 import com.wavesenterprise.state.{Blockchain, ByteStr, ContractId, DataEntry, Diff}
-import com.wavesenterprise.transaction.Transaction
+import com.wavesenterprise.transaction.{AtomicBadge, Transaction}
 import com.wavesenterprise.transaction.ValidationError.{GenericError, InvalidContractId}
 import com.wavesenterprise.transaction.docker.{CallContractTransactionV6, ExecutedContractTransactionV4}
 import monix.eval.Task
@@ -32,7 +32,7 @@ class ConfidentialContractsApiService(
     nodeOwner: PrivateKeyAccount,
     txBroadcaster: TxBroadcaster,
     persistentConfidentialState: PersistentConfidentialState
-) extends ConfidentialDataInventoryBroadcaster with ContractKeysOps {
+) extends ConfidentialDataInventoryBroadcaster with ContractKeysOps with ConfidentialParticipantsAtomicValidations {
   case class CommitmentWithKey(
       commitment: Commitment,
       commitmentKey: SaltBytes
@@ -46,12 +46,13 @@ class ConfidentialContractsApiService(
       commitmentVerification: Boolean
   ): Task[Either[ApiError, ConfidentialContractCallResponse]] =
     (for {
-      contractId <-
+      contractIdStr <-
         EitherT.fromEither[Task](ByteStr.decodeBase58(request.contractId)
           .toEither
           .leftMap(_ => ApiError.fromValidationError(InvalidContractId(request.contractId))))
-
-      _                 <- validateConfidentialContract(contractId)
+      contractId   = ContractId(contractIdStr)
+      contractInfo = blockchain.contract(ContractId(contractIdStr))
+      _                 <- validateConfidentialContractIfNotAtomic(request.atomicBadge, contractInfo, contractId)
       commitmentWithKey <- processCommitment(request, commitmentVerification)
 
       feeAssetId <- (request.feeAssetId
@@ -65,7 +66,7 @@ class ConfidentialContractsApiService(
       tx <- EitherT.fromEither[Task](
         CallContractTransactionV6.selfSigned(
           sender = PrivateKeyAccount(nodeOwner.privateKey, nodeOwner.publicKey),
-          contractId = contractId,
+          contractId = contractId.byteStr,
           params = List.empty,
           fee = request.fee,
           timestamp = request.timestamp,
@@ -75,22 +76,24 @@ class ConfidentialContractsApiService(
           payments = List.empty,
           inputCommitment = commitmentWithKey.commitment
         ).leftMap(fromValidationError))
-
-      certChain <- EitherT.fromEither[Task](parseCertChain(request.certificatesBytes).leftMap(fromValidationError))
-      diff      <- checkDiff(broadcast, tx, certChain)
-      _         <- broadcastTx(broadcast, tx, diff, certChain)
+      confidentialDataRecipientsAndMessage <- EitherT.fromEither[Task](getConfidentialDataRecipients(request, contractInfo))
+      certChain                            <- EitherT.fromEither[Task](parseCertChain(request.certificatesBytes).leftMap(fromValidationError))
+      diff                                 <- checkDiff(broadcast, tx, certChain)
+      _                                    <- broadcastTx(broadcast, tx, diff, certChain)
 
       confidentialInput = ConfidentialInput(
         commitment = commitmentWithKey.commitment,
         txId = tx.id(),
-        contractId = ContractId(contractId),
+        contractId = contractId,
         commitmentKey = commitmentWithKey.commitmentKey,
         entries = request.params
       )
       _         = confidentialRocksDBStorage.saveInput(confidentialInput)
       inventory = ConfidentialInventory(nodeOwner, confidentialInput.contractId, confidentialInput.commitment, ConfidentialDataType.Input)
-      _         = broadcastInventory(inventory)
-    } yield ConfidentialContractCallResponse(tx, confidentialInput))
+
+      (confidentialDataRecipients, message) = confidentialDataRecipientsAndMessage
+      _                                     = broadcastInventoryToRecipients(confidentialDataRecipients, inventory)
+    } yield ConfidentialContractCallResponse(tx, confidentialInput, message))
       .value
 
   private def broadcastTx(
@@ -118,17 +121,26 @@ class ConfidentialContractsApiService(
     EitherT.fromEither(diff)
   }
 
-  private def validateConfidentialContract(contractId: ByteStr): EitherT[Task, ApiError, Unit] = {
+  private def validateConfidentialContractIfNotAtomic(atomicBadge: Option[AtomicBadge],
+                                                      contractInfo: Option[ContractInfo],
+                                                      contractId: ContractId): EitherT[Task, ApiError, Unit] = {
+    atomicBadge match {
+      case None    => validateConfidentialContract(contractInfo, contractId)
+      case Some(_) => EitherT.fromEither[Task](Either.right(()))
+    }
+  }
+
+  private def validateConfidentialContract(contractInfo: Option[ContractInfo], contractId: ContractId): EitherT[Task, ApiError, Unit] = {
+    val contractIdStr = contractId.byteStr.toString()
     val result = for {
       contractInfo <-
-        blockchain
-          .contract(ContractId(contractId))
-          .toRight(ContractNotFound(contractId.toString))
+        contractInfo
+          .toRight(ContractNotFound(contractIdStr))
 
       _ <- Either.cond(
         test = contractInfo.isConfidential,
         right = (),
-        left = ConfidentialCallNotAllowedForContract(contractId.toString)
+        left = ConfidentialCallNotAllowedForContract(contractIdStr)
       )
 
       _ <- checkConfidentialGroupMembership(contractInfo)
@@ -136,7 +148,7 @@ class ConfidentialContractsApiService(
       _ <- Either.cond(
         test = contractInfo.groupParticipants.size >= 3,
         right = (),
-        left = NotEnoughGroupParticipants(contractId = contractId.toString()),
+        left = NotEnoughGroupParticipants(contractId = contractIdStr),
       )
     } yield ()
 

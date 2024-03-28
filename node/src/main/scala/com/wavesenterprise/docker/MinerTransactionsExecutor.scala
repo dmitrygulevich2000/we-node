@@ -180,15 +180,15 @@ class MinerTransactionsExecutor(
       metrics: ContractExecutionMetrics,
       tx: ExecutableTransaction,
       maybeCertChainWithCrl: Option[(CertChain, CrlCollection)],
-      atomically: Boolean
-  ): Either[ValidationError, TransactionWithDiff] = {
-    (validateAssetIdLength(assetOperations) >> createExecutedTx(results, assetOperations, metrics, tx))
+      atomically: Boolean,
+      contractInfo: ContractInfo
+  ): Either[ValidationError, TransactionWithDiff] =
+    (validateAssetIdLength(assetOperations) >> createExecutedTx(results, assetOperations, metrics, tx, atomically, contractInfo))
       .flatMap { case ExecutedTxOutput(tx, confidentialOutput) =>
         log.debug(s"Built executed transaction '${tx.id()}' for '${tx.tx.id()}'")
-        confidentialOutput.foreach(processConfidentialOutput)
+        confidentialOutput.foreach(output => processConfidentialOutput(output, contractInfo))
         processExecutedTx(tx, metrics, maybeCertChainWithCrl, confidentialOutput = confidentialOutput, atomically)
       }
-  }
 
   override protected def handleExecutionSuccess(
       results: DataEntryMap,
@@ -269,7 +269,7 @@ class MinerTransactionsExecutor(
       resultsHash = ContractTransactionValidation.resultsMapHash(results, assetOperations)
       validators  = blockchain.lastBlockContractValidators - minerAddress
       validationProofs <- selectValidationProofs(tx.id(), validators, validationPolicy, resultsHash)
-      executedTxOutput <- extractInputCommitment(tx)
+      executedTxOutput <- extractInputCommitment(tx, atomically = false)
         .map { inputCommitment =>
           buildConfidentialExecutedTx(results, tx, resultsHash, validationProofs, inputCommitment)
         }.getOrElse {
@@ -295,7 +295,9 @@ class MinerTransactionsExecutor(
       results: List[DataEntry[_]],
       assetOperations: List[ContractAssetOperation],
       metrics: ContractExecutionMetrics,
-      tx: ExecutableTransaction
+      tx: ExecutableTransaction,
+      atomically: Boolean,
+      contractInfo: ContractInfo
   ): Either[ValidationError, ExecutedTxOutput] =
     if (validationFeatureActivated) {
       metrics.measureEither(
@@ -308,7 +310,7 @@ class MinerTransactionsExecutor(
           _                <- checkAssetOperationsSupported(contractNativeTokenFeatureActivated, assetOperations)
           _                <- checkLeaseOpsForContractSupported(leaseOpsForContractsFeatureActivated, assetOperations)
           executedTx <-
-            extractInputCommitment(tx)
+            extractInputCommitment(tx, atomically, contractInfo.some)
               .filter(_ => confidentialContractFeatureActivated)
               .map { inputCommitment =>
                 buildConfidentialExecutedTx(results, tx, resultsHash, validationProofs, inputCommitment)
@@ -395,10 +397,10 @@ class MinerTransactionsExecutor(
       messagesCache.put(tx.id(), ContractExecutionMessage(nodeOwnerAccount, tx.id(), Failure, None, message, time.correctedTime()))
   }
 
-  private def processConfidentialOutput(output: ConfidentialOutput): Unit = {
+  private def processConfidentialOutput(output: ConfidentialOutput, contractInfo: ContractInfo): Unit = {
     confidentialStorage.saveOutput(output)
     val inventory = ConfidentialInventory(nodeOwnerAccount, output.contractId, output.commitment, ConfidentialDataType.Output)
-    broadcastInventory(inventory)
+    broadcastInventory(inventory, contractInfo = Option(contractInfo))
   }
 
   private def processExecutedTx(

@@ -4,6 +4,7 @@ import cats.data.{EitherT, OptionT}
 import cats.implicits._
 import com.wavesenterprise.account.PrivateKeyAccount
 import com.wavesenterprise.certs.CertChain
+import com.wavesenterprise.crypto
 import com.wavesenterprise.crypto.internals.confidentialcontracts.Commitment
 import com.wavesenterprise.database.rocksdb.confidential.ConfidentialRocksDBStorage
 import com.wavesenterprise.docker.ContractExecutionError.{FatalErrorCode, NodeFailure, RecoverableErrorCode}
@@ -77,8 +78,10 @@ trait TransactionsExecutor extends ScorexLogging {
     } yield DefaultExecutableTxSetup(tx, executor, info, parallelism, maybeCertChainWithCrl)
   }
 
-  private def loadConfidentialInput(tx: CallContractTransactionV6): Either[ContractExecutionException, ConfidentialInput] = {
-    confidentialStorage.getInput(tx.inputCommitment).toRight {
+  private def loadConfidentialInput(
+      tx: CallContractTransactionV6,
+      confidentialInputFromAtomic: Option[ConfidentialInput] = None): Either[ContractExecutionException, ConfidentialInput] = {
+    confidentialStorage.getInput(tx.inputCommitment).orElse(confidentialInputFromAtomic).toRight {
       ContractExecutionException(
         ValidationError.ContractExecutionError(tx.contractId, s"Confidential input '${tx.inputCommitment}' for tx '${tx.id()}' not found"))
     }
@@ -93,13 +96,41 @@ trait TransactionsExecutor extends ScorexLogging {
     } yield ConfidentialCallPermittedSetup(tx, executor, contractInfo, confidentialInput, maybeCertChainWithCrl)
   }
 
-  protected def extractInputCommitment(tx: ExecutableTransaction): Option[Commitment] =
+  def prepareConfidentialAtomicSetup(tx: CallContractTransactionV6,
+                                     contractInfo: ContractInfo,
+                                     maybeCertChainWithCrl: Option[(CertChain, CrlCollection)]): Task[ConfidentialCallPermittedSetup] = {
+    for {
+      executor <- deferEither(selectExecutor(tx))
+      confidentialInput <- deferEither(
+        loadConfidentialInput(
+          tx, {
+            val data               = ConfidentialDataUtils.entriesToBytes(tx.params)
+            val (_, commitmentKey) = crypto.algorithms.saltedSecureHash(data)
+            ConfidentialInput(
+              commitment = tx.inputCommitment,
+              txId = tx.id(),
+              contractId = ContractId(tx.contractId),
+              commitmentKey,
+              entries = tx.params
+            ).some
+          }
+        )
+      )
+    } yield ConfidentialCallPermittedSetup(tx, executor, contractInfo, confidentialInput, maybeCertChainWithCrl)
+  }
+
+  protected def extractInputCommitment(tx: ExecutableTransaction,
+                                       atomically: Boolean,
+                                       contractInfo: Option[ContractInfo] = None): Option[Commitment] = {
     tx match {
-      case tx: CallContractTransactionV6 if blockchain.contract(ContractId(tx.contractId)).exists(_.isConfidential) =>
-        Some(tx.inputCommitment)
+      case tx: CallContractTransactionV6
+          if blockchain.contract(ContractId(tx.contractId)).exists(_.isConfidential) ||
+            atomically && contractInfo.exists(_.contractId == tx.contractId) =>
+        tx.inputCommitment.some
       case _ =>
         None
     }
+  }
 
   protected case class ExecutedTxOutput(tx: ExecutedContractTransaction, confidentialOutput: Seq[ConfidentialOutput])
 
@@ -344,7 +375,7 @@ trait TransactionsExecutor extends ScorexLogging {
       executeContract(setup.tx, setup.executor, setup.info, extractConfidentialInput(setup))
         .flatMap {
           case (value, metrics) =>
-            handleExecutionResult(value, metrics, setup.tx, setup.maybeCertChainWithCrl, atomically, txContext = txContext)
+            handleExecutionResult(value, metrics, setup.tx, setup.maybeCertChainWithCrl, atomically, txContext = txContext, setup.info)
         }
         .doOnCancel {
           Task(log.debug(s"Contract transaction '${setup.tx.id()}' execution was cancelled"))
@@ -384,7 +415,8 @@ trait TransactionsExecutor extends ScorexLogging {
       transaction: ExecutableTransaction,
       maybeCertChainWithCrl: Option[(CertChain, CrlCollection)],
       atomically: Boolean,
-      txContext: TxContext
+      txContext: TxContext,
+      contractInfo: ContractInfo
   ): Task[Either[ValidationError, TransactionWithDiff]] =
     Task {
       execution match {
@@ -437,7 +469,7 @@ trait TransactionsExecutor extends ScorexLogging {
                 txContext)
           }
         case ContractExecutionSuccess(results, assetOperations) =>
-          handleExecutionSuccess(results, assetOperations, metrics, transaction, maybeCertChainWithCrl, atomically)
+          handleExecutionSuccess(results, assetOperations, metrics, transaction, maybeCertChainWithCrl, atomically, contractInfo)
         case ContractUpdateSuccess =>
           handleUpdateSuccess(metrics, transaction, maybeCertChainWithCrl, atomically)
         case ContractExecutionError(code, message) =>
@@ -526,7 +558,8 @@ trait TransactionsExecutor extends ScorexLogging {
       metrics: ContractExecutionMetrics,
       tx: ExecutableTransaction,
       maybeCertChainWithCrl: Option[(CertChain, CrlCollection)],
-      atomically: Boolean
+      atomically: Boolean,
+      contractInfo: ContractInfo
   ): Either[ValidationError, TransactionWithDiff]
 
   protected def handleExecutionSuccess(

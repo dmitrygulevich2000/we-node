@@ -13,7 +13,7 @@ import com.wavesenterprise.database.rocksdb.confidential._
 import com.wavesenterprise.network.contracts.ConfidentialDataSynchronizer
 import com.wavesenterprise.serialization.BinarySerializer
 import com.wavesenterprise.state.{ByteStr, ContractBlockchain, ContractId, DataEntry}
-import com.wavesenterprise.transaction.Transaction
+import com.wavesenterprise.transaction.{AtomicTransaction, Transaction}
 import com.wavesenterprise.transaction.docker.{ExecutedContractData, ExecutedContractTransactionV4}
 import com.wavesenterprise.utils.ReadWriteLocking
 import monix.catnap.MVar
@@ -215,10 +215,17 @@ class ConfidentialStateUpdater(confidentialDataSynchronizer: ConfidentialDataSyn
   }
 
   private def extractOutputCommitments(txs: Seq[Transaction]): Seq[Commitment] = {
-    txs.collect {
-      case tx: ExecutedContractTransactionV4 if blockchain.contract(ContractId(tx.tx.contractId)).exists(_.isConfidential) =>
-        Some(tx.outputCommitment)
-    }.flatten
+    txs
+      .collect {
+        case atomicTx: AtomicTransaction       => atomicTx.transactions
+        case tx: ExecutedContractTransactionV4 => List(tx)
+      }
+      .flatten
+      .collect {
+        case tx: ExecutedContractTransactionV4 if blockchain.contract(ContractId(tx.tx.contractId)).exists(_.isConfidential) =>
+          tx.outputCommitment
+      }
+
   }
 
   private def awaitPersistenceBlockApply(id: BlockId): Task[Unit] =
