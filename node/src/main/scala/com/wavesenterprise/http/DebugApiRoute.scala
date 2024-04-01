@@ -146,8 +146,8 @@ class DebugApiRoute(ws: WESettings,
     *
     * Get state at specified height
     **/
-  def stateWE: Route = (path("stateWE" / IntNumber) & get) { height =>
-    PositiveInt(height.toString).processRoute { height =>
+  def stateWE: Route = (path("stateWE" / Segment) & get) { height =>
+    PositiveInt(height).processRoute { height =>
       complete(ng.addressWestDistribution(height).map { case (a, b) => a.stringRepr -> b })
     }
   }
