@@ -1710,6 +1710,12 @@
     },
     "/privacy/forceSync": {
       "post": {
+        "security": [
+          {
+            "Privacy-API-Key": [],
+            "OAuth": []
+          }
+        ],
         "description": "Force node to download all policy data that it should store",
         "summary": "Force sync privacy data",
         "tags": [
@@ -1734,6 +1740,12 @@
     },
     "/privacy/forceSync/{policyId}": {
       "get": {
+        "security": [
+          {
+            "Privacy-API-Key": [],
+            "OAuth": []
+          }
+        ],
         "description": "Force node to download policy data by policy id that it should store",
         "summary": "Force sync privacy data",
         "tags": [
@@ -1767,6 +1779,12 @@
     },
     "/privacy/{policyId}/getData/{policyItemHash}": {
       "get": {
+        "security": [
+          {
+            "Privacy-API-Key": [],
+            "OAuth": []
+          }
+        ],
         "description": "Get policy item data",
         "summary": "Get data",
         "tags": [
@@ -1808,6 +1826,12 @@
     },
     "/privacy/{policyId}/getLargeData/{policyItemHash}": {
       "get": {
+        "security": [
+          {
+            "Privacy-API-Key": [],
+            "OAuth": []
+          }
+        ],
         "description": "Get policy item large data",
         "summary": "Get large data",
         "tags": [
@@ -1960,6 +1984,12 @@
     },
     "/privacy/{policyId}/getInfo/{policyItemHash}": {
       "get": {
+        "security": [
+          {
+            "Privacy-API-Key": [],
+            "OAuth": []
+          }
+        ],
         "description": "Get policy item info",
         "summary": "Get info",
         "tags": [
@@ -2001,6 +2031,12 @@
     },
     "/privacy/getInfos": {
       "post": {
+        "security": [
+          {
+            "Privacy-API-Key": [],
+            "OAuth": []
+          }
+        ],
         "description": "Get policy items info",
         "summary": "Get infos",
         "tags": [
@@ -2043,6 +2079,12 @@
     },
     "/privacy/sendDataV2": {
       "post": {
+        "security": [
+          {
+            "Privacy-API-Key": [],
+            "OAuth": []
+          }
+        ],
         "description": "Upload policy private data",
         "summary": "Send private data",
         "tags": [
@@ -2094,6 +2136,12 @@
     },
     "/privacy/sendData": {
       "post": {
+        "security": [
+          {
+            "Privacy-API-Key": [],
+            "OAuth": []
+          }
+        ],
         "description": "Upload policy private data",
         "summary": "Send private data",
         "tags": [
@@ -2144,6 +2192,12 @@
     },
     "/privacy/sendLargeData": {
       "post": {
+        "security": [
+          {
+            "Privacy-API-Key": [],
+            "OAuth": []
+          }
+        ],
         "description": "Upload policy private large data",
         "summary": "Send private large data",
         "tags": [
@@ -3983,6 +4037,12 @@
     },
     "/confidential-contracts/{contractId}": {
       "get": {
+        "security": [
+          {
+            "Confidential-Contracts-API-Key": [],
+            "OAuth": []
+          }
+        ],
         "description": "Get confidential keys values by contract id",
         "summary": "confidential keys values",
         "tags": [
@@ -4043,8 +4103,14 @@
         }
       }
     },
-      "/confidential-contracts/call": {
+    "/confidential-contracts/call": {
       "post": {
+        "security": [
+          {
+            "Confidential-Contracts-API-Key": [],
+            "OAuth": []
+          }
+        ],
         "description": "Confidential call of callContractTransactionV6",
         "summary": "Confidential call",
         "tags": [
@@ -4100,6 +4166,12 @@
     },
     "/confidential-contracts/tx/{executable-tx-id}": {
       "get": {
+        "security": [
+          {
+            "Confidential-Contracts-API-Key": [],
+            "OAuth": []
+          }
+        ],
         "description": "Returns executed transaction, if present, for id of executable transaction",
         "summary": "Associated Executed transaction",
         "tags": [
@@ -8197,7 +8269,7 @@
         },
         "contractVersion": {
           "example": 1,
-           "type": "integer",
+          "type": "integer",
           "format": "int32"
         },
         "params": {
@@ -9176,8 +9248,6 @@
   "security": [
     {
       "API-Key": [],
-      "Privacy-API-Key": [],
-      "Confidential-Contracts-API-Key": [],
       "OAuth": []
     }
   ],
