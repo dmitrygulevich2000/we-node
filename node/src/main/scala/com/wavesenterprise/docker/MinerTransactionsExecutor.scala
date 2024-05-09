@@ -24,6 +24,8 @@ import com.wavesenterprise.utils.Time
 import com.wavesenterprise.utils.pki.CrlCollection
 import com.wavesenterprise.utx.UtxPool
 import monix.execution.Scheduler
+import kamon.Kamon
+import kamon.metric.CounterMetric
 import com.wavesenterprise.state.contracts.confidential.ConfidentialOutput
 
 import java.util.concurrent.ConcurrentHashMap
@@ -61,6 +63,8 @@ class MinerTransactionsExecutor(
   private[this] val confidentialContractFeatureActivated: Boolean = {
     blockchain.isFeatureActivated(BlockchainFeature.ConfidentialDataInContractsSupport, blockchain.height)
   }
+
+  private val invalidProofsErrorCount: CounterMetric = Kamon.counter("invalid-proofs-count")
 
   override def contractValidatorResultsStoreOpt: Option[ContractValidatorResultsStore] = contractValidatorResultsStore.some
 
@@ -277,6 +281,7 @@ class MinerTransactionsExecutor(
       invalidProofsError.resultsHash.foreach {
         contractValidatorResultsStore.removeInvalidResults(keyBlockId, tx.id(), _)
       }
+      invalidProofsErrorCount.increment()
       log.warn(s"Suddenly not enough proofs for transaction '${tx.id()}'. $invalidProofsError")
     case error =>
       val message = s"Executed transaction creation error: '$error'"
