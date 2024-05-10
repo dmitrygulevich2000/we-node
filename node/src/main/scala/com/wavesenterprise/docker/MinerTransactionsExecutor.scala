@@ -176,7 +176,8 @@ class MinerTransactionsExecutor(
       metrics: ContractExecutionMetrics,
       tx: ExecutableTransaction,
       maybeCertChainWithCrl: Option[(CertChain, CrlCollection)],
-      atomically: Boolean
+      atomically: Boolean,
+      sequential: Boolean = false
   ): Either[ValidationError, TransactionWithDiff] =
     (validateAssetIdLength(assetOperations) >> createExecutedTx(results, assetOperations, metrics, tx))
       .leftMap { error =>
@@ -186,7 +187,7 @@ class MinerTransactionsExecutor(
       .flatMap { case ExecutedTxOutput(tx, maybeConfidentialOutput) =>
         log.debug(s"Built executed transaction '${tx.id()}' for '${tx.tx.id()}'")
         maybeConfidentialOutput.foreach(processConfidentialOutput)
-        processExecutedTx(tx, metrics, maybeCertChainWithCrl, maybeConfidentialOutput = maybeConfidentialOutput, atomically)
+        processExecutedTx(tx, metrics, maybeCertChainWithCrl, maybeConfidentialOutput = maybeConfidentialOutput, atomically, sequential)
       }
 
   private def createExecutedTx(
@@ -301,7 +302,8 @@ class MinerTransactionsExecutor(
       metrics: ContractExecutionMetrics,
       maybeCertChainWithCrl: Option[(CertChain, CrlCollection)],
       maybeConfidentialOutput: Option[ConfidentialOutput],
-      atomically: Boolean
+      atomically: Boolean,
+      sequential: Boolean = false
   ): Either[ValidationError, TransactionWithDiff] = {
     metrics
       .measureEither(
@@ -309,7 +311,7 @@ class MinerTransactionsExecutor(
         if (atomically) {
           transactionsAccumulator.processAtomically(executedTx, maybeConfidentialOutput, maybeCertChainWithCrl)
         } else {
-          transactionsAccumulator.process(executedTx, maybeConfidentialOutput, maybeCertChainWithCrl)
+          transactionsAccumulator.process(executedTx, maybeConfidentialOutput, maybeCertChainWithCrl, sequential)
         }
       )
       .map { diff =>
