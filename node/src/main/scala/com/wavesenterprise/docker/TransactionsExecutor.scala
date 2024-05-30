@@ -274,12 +274,13 @@ trait TransactionsExecutor extends ScorexLogging {
 
   def processSetup(setup: ExecutableSetup,
                    atomically: Boolean = false,
-                   txContext: TxContext = TxContext.Default): Task[Either[ValidationError, TransactionWithDiff]] = {
+                   txContext: TxContext = TxContext.Default,
+                   sequential: Boolean = false): Task[Either[ValidationError, TransactionWithDiff]] = {
     Task(log.debug(s"Start executing contract transaction '${setup.tx.id()}'")) *>
       executeDockerContract(setup.tx, setup.executor, setup.info, extractConfidentialInput(setup))
         .flatMap {
           case (value, metrics) =>
-            handleExecutionResult(value, metrics, setup.tx, setup.maybeCertChainWithCrl, atomically, txContext = txContext)
+            handleExecutionResult(value, metrics, setup.tx, setup.maybeCertChainWithCrl, atomically, txContext = txContext, sequential)
         }
         .doOnCancel {
           Task(log.debug(s"Contract transaction '${setup.tx.id()}' execution was cancelled"))
@@ -317,12 +318,13 @@ trait TransactionsExecutor extends ScorexLogging {
       transaction: ExecutableTransaction,
       maybeCertChainWithCrl: Option[(CertChain, CrlCollection)],
       atomically: Boolean,
-      txContext: TxContext
+      txContext: TxContext,
+      sequential: Boolean = false
   ): Task[Either[ValidationError, TransactionWithDiff]] =
     Task {
       execution match {
         case ContractExecutionSuccess(results, assetOperations) =>
-          handleExecutionSuccess(results, assetOperations, metrics, transaction, maybeCertChainWithCrl, atomically)
+          handleExecutionSuccess(results, assetOperations, metrics, transaction, maybeCertChainWithCrl, atomically, sequential)
         case ContractUpdateSuccess =>
           handleUpdateSuccess(metrics, transaction, maybeCertChainWithCrl, atomically)
         case ContractExecutionError(code, message) =>
@@ -385,7 +387,8 @@ trait TransactionsExecutor extends ScorexLogging {
       metrics: ContractExecutionMetrics,
       tx: ExecutableTransaction,
       maybeCertChainWithCrl: Option[(CertChain, CrlCollection)],
-      atomically: Boolean
+      atomically: Boolean,
+      sequential: Boolean = false
   ): Either[ValidationError, TransactionWithDiff]
 
   def checkAssetOperationsSupported(

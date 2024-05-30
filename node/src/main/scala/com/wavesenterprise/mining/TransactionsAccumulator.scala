@@ -86,19 +86,25 @@ class TransactionsAccumulator(ng: NG,
 
   def process(tx: Transaction,
               maybeConfidentialOutput: Option[ConfidentialOutput],
-              maybeCertChainWithCrl: Option[(CertChain, CrlCollection)]): Either[ValidationError, Diff] = writeLock {
+              maybeCertChainWithCrl: Option[(CertChain, CrlCollection)],
+              sequential: Boolean = false): Either[ValidationError, Diff] = writeLock {
     if (processingAtomic) {
       Left(GenericError("Can't process transaction during atomic transaction mining"))
     } else {
-      processTransaction(tx, maybeConfidentialOutput.toSeq, maybeCertChainWithCrl)
+      processTransaction(tx, maybeConfidentialOutput.toSeq, maybeCertChainWithCrl, false, sequential)
     }
   }
 
   private def processTransaction(tx: Transaction,
                                  confidentialOutputs: Seq[ConfidentialOutput],
                                  maybeCertChainWithCrl: Option[(CertChain, CrlCollection)],
-                                 atomically: Boolean = false): Either[ValidationError, Diff] = {
-    val conflictFound           = findConflicts(tx)
+                                 atomically: Boolean = false,
+                                 sequential: Boolean = false): Either[ValidationError, Diff] = {
+    val conflictFound = if (sequential) {
+      false
+    } else {
+      findConflicts(tx)
+    }
     lazy val updatedConstraints = constraints.put(state, tx)
 
     if (conflictFound) {

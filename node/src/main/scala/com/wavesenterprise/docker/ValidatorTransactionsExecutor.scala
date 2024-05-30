@@ -103,7 +103,8 @@ class ValidatorTransactionsExecutor(
       metrics: ContractExecutionMetrics,
       tx: ExecutableTransaction,
       maybeCertChainWithCrl: Option[(CertChain, CrlCollection)],
-      atomically: Boolean
+      atomically: Boolean,
+      sequential: Boolean = false
   ): Either[ValidationError, TransactionWithDiff] = {
     (for {
       _ <- checkAssetOperationsSupported(contractNativeTokenFeatureActivated, assetOperations)

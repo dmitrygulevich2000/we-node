@@ -77,6 +77,55 @@ trait TransactionsConfirmatory[E <: TransactionsExecutor] extends ScorexLogging 
   }
 
   def confirmationTask: Task[Unit] = {
+    val sequential = transactionExecutorOpt match {
+      case Some(executor) => {
+        executor.parallelism == 1
+      }
+      case None => {
+        false
+      }
+    }
+
+    if (sequential) {
+      log.debug("Starting sequential confirmation")
+      return Observable
+        .repeatEval {
+          val txsBatch = utx.selectOrderedTransactionsWithCerts(selectTxPredicate)
+          val txsIds   = java.util.Arrays.asList(txsBatch.map(_.tx.id()): _*)
+          inProcessTxIds.addAll(txsIds)
+          txsBatch
+        }
+        .doOnNext {
+          case txs if txs.isEmpty =>
+            Task(log.debug(s"There are no suitable transactions in UTX, retry pulling in $utxCheckDelay")).delayResult(utxCheckDelay)
+          case txs =>
+            Task(log.trace(s"Processing '${txs.length}' transactions from UTX"))
+        }
+        .concatMap(txs => Observable.fromIterable(txs)) // Flatten utx batches
+        .mapEval { txWithCerts =>
+          prepareSetup(txWithCerts)
+            .onErrorRecoverWith {
+              case ex => Task(utx.remove(txWithCerts.tx, Some(ex.toString), mustBeInPool = true)).as(None)
+            }
+            .flatTap {
+              case None =>
+                Task(log.debug(s"The environment is not yet ready for transaction '${txWithCerts.tx.id()}' execution"))
+              case _ =>
+                Task(log.trace(s"Tx '${txWithCerts.tx.id()}' has been prepared"))
+            }
+        }
+        .collect {
+          case Some(setup) => setup
+        }
+        // this will limit TransactionConfirmationSetup buffering instead of txsPullingSemaphore
+        .asyncBoundary(OverflowStrategy.BackPressure(pullingBufferSize.value))
+        // unlike default confirmationTask, just process txns sequentially - without grouping
+        .mapEval(txSetup => processSetup(txSetup, true))
+        .doOnSubscriptionCancel { Task(log.debug("Transactions confirmation stream was cancelled")) }
+        .completedL
+        .executeOn(scheduler)
+    }
+
     Observable
       .fromTask {
         (Semaphore[Task](pullingBufferSize.value), Semaphore[Task](1)).parTupled
@@ -235,7 +284,7 @@ trait TransactionsConfirmatory[E <: TransactionsExecutor] extends ScorexLogging 
       }
   }
 
-  protected def processSetup(txSetup: TransactionConfirmationSetup): Task[Unit] = {
+  protected def processSetup(txSetup: TransactionConfirmationSetup, sequential: Boolean = false): Task[Unit] = {
     import TransactionsConfirmatory._
 
     def raiseDisabledExecutorError: Task[Nothing] =
@@ -244,7 +293,7 @@ trait TransactionsConfirmatory[E <: TransactionsExecutor] extends ScorexLogging 
     val resultTask = (txSetup, transactionExecutorOpt) match {
       case (SimpleTxSetup(tx, maybeCertChainWithCrl), _)      => processSimpleSetup(tx, maybeCertChainWithCrl)
       case (setup: ConfidentialExecutableUnpermittedSetup, _) => processExecutableSetup(setup)
-      case (executableSetup: ExecutableSetup, Some(executor)) => processExecutableSetup(executableSetup, executor)
+      case (executableSetup: ExecutableSetup, Some(executor)) => processExecutableSetup(executableSetup, executor, sequential)
       case (_: ExecutableSetup, None)                         => raiseDisabledExecutorError
       case (_: AtomicComplexSetup, None)                      => raiseDisabledExecutorError
       case (atomicSetup: AtomicSimpleSetup, _)                => processAtomicSimpleSetup(atomicSetup)
@@ -285,8 +334,8 @@ trait TransactionsConfirmatory[E <: TransactionsExecutor] extends ScorexLogging 
     }
   }
 
-  private def processExecutableSetup(setup: ExecutableSetup, executor: TransactionsExecutor): Task[Unit] = {
-    executor.processSetup(setup).flatMap { maybeTxWithDiff =>
+  private def processExecutableSetup(setup: ExecutableSetup, executor: TransactionsExecutor, sequential: Boolean = false): Task[Unit] = {
+    executor.processSetup(setup, false, TxContext.Default, sequential).flatMap { maybeTxWithDiff =>
       maybeTxWithDiff.fold(
         {
           case MvccConflictError => Task(forgetTxProcessing(setup.tx.id()))
