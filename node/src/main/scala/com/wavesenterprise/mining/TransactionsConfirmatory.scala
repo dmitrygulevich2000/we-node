@@ -85,51 +85,42 @@ trait TransactionsConfirmatory[E <: TransactionsExecutor] extends ScorexLogging 
         false
       }
     }
-    
+
     if (sequential) {
       log.debug("Starting sequential confirmation")
       return Observable
-        .fromTask {
-          (Semaphore[Task](pullingBufferSize.value), Semaphore[Task](1)).parTupled
+        .repeatEval {
+          val txsBatch = utx.selectOrderedTransactionsWithCerts(selectTxPredicate)
+          val txsIds   = java.util.Arrays.asList(txsBatch.map(_.tx.id()): _*)
+          inProcessTxIds.addAll(txsIds)
+          txsBatch
         }
-        .flatMap {
-          case (txsPullingSemaphore, groupProcessingSemaphore) =>
-            Observable
-              .repeatEval {
-                val txsBatch = utx.selectOrderedTransactionsWithCerts(selectTxPredicate)
-                val txsIds   = java.util.Arrays.asList(txsBatch.map(_.tx.id()): _*)
-                inProcessTxIds.addAll(txsIds)
-                txsBatch
-              }
-              .doOnNext {
-                case txs if txs.isEmpty =>
-                  Task(log.debug(s"There are no suitable transactions in UTX, retry pulling in $utxCheckDelay")).delayResult(utxCheckDelay)
-                case txs =>
-                  Task(log.trace(s"Processing '${txs.length}' transactions from UTX"))
-              }
-              .concatMap(txs => Observable.fromIterable(txs)) // Flatten utx batches
-              .mapEval { txWithCerts =>
-                txsPullingSemaphore.acquire *>
-                  prepareSetup(txWithCerts)
-                    .onErrorRecoverWith {
-                      case ex => Task(utx.remove(txWithCerts.tx, Some(ex.toString), mustBeInPool = true)).as(None)
-                    }
-                    .flatTap {
-                      case None =>
-                        txsPullingSemaphore.release *>
-                          Task(log.debug(s"The environment is not yet ready for transaction '${txWithCerts.tx.id()}' execution"))
-                      case _ =>
-                        Task(log.trace(s"Tx '${txWithCerts.tx.id()}' has been prepared"))
-                    }
-              }
-              .collect {
-                case Some(setup) => setup
-              }
-              // unlike default confirmationTask, just process txns sequentially
-              .asyncBoundary(OverflowStrategy.BackPressure(2))
-              .doOnNext(_ => txsPullingSemaphore.release)
-              .mapEval(txSetup => processSetup(txSetup, true))
+        .doOnNext {
+          case txs if txs.isEmpty =>
+            Task(log.debug(s"There are no suitable transactions in UTX, retry pulling in $utxCheckDelay")).delayResult(utxCheckDelay)
+          case txs =>
+            Task(log.trace(s"Processing '${txs.length}' transactions from UTX"))
         }
+        .concatMap(txs => Observable.fromIterable(txs)) // Flatten utx batches
+        .mapEval { txWithCerts =>
+          prepareSetup(txWithCerts)
+            .onErrorRecoverWith {
+              case ex => Task(utx.remove(txWithCerts.tx, Some(ex.toString), mustBeInPool = true)).as(None)
+            }
+            .flatTap {
+              case None =>
+                Task(log.debug(s"The environment is not yet ready for transaction '${txWithCerts.tx.id()}' execution"))
+              case _ =>
+                Task(log.trace(s"Tx '${txWithCerts.tx.id()}' has been prepared"))
+            }
+        }
+        .collect {
+          case Some(setup) => setup
+        }
+        // this will limit TransactionConfirmationSetup buffering instead of txsPullingSemaphore
+        .asyncBoundary(OverflowStrategy.BackPressure(pullingBufferSize.value))
+        // unlike default confirmationTask, just process txns sequentially - without grouping
+        .mapEval(txSetup => processSetup(txSetup, true))
         .doOnSubscriptionCancel { Task(log.debug("Transactions confirmation stream was cancelled")) }
         .completedL
         .executeOn(scheduler)
